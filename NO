@@ -1,0 +1,352 @@
+--[[ 
+MiwaXHX - Speed Simulator Helper (Client-side)
+Paste into a LocalScript under a ScreenGui (StarterGui).
+THIS IS FOR YOUR OWN GAME — update island positions and race part names to match your game's objects.
+Teleport method: CFrame (instant)
+--]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid")
+
+-- =========================
+-- CONFIG (edit these)
+-- =========================
+-- Define islands and their Vector3 positions (example positions). Replace with your game's positions.
+local ISLANDS = {
+    {name = "Grass Island", pos = Vector3.new(100, 10, 0)},
+    {name = "Snow Island",  pos = Vector3.new(500, 12, -50)},
+    {name = "Desert Island",pos = Vector3.new(900, 8, 200)},
+    {name = "Volcano Island",pos = Vector3.new(1300, 20, 400)},
+    {name = "Space Island", pos = Vector3.new(1700, 300, 800)},
+    {name = "Cloud Island", pos = Vector3.new(2100, 150, -300)},
+}
+
+-- Race-related names/parts in your workspace (customize)
+local RACE_START_TAG = "RaceStart"   -- name of part or model marking race start
+local RACE_FINISH_TAG = "RaceFinish" -- name of part or model marking finish
+
+-- AutoRace behavior
+local AUTO_RACE_MOVE_TO_TIMEOUT = 10 -- seconds to wait for MoveToFinished before retrying
+local AUTO_RACE_WAIT_AFTER_FINISH = 1.5 -- seconds to wait after reaching finish
+
+-- Teleport height offset (so you don't spawn inside ground)
+local TELEPORT_Y_OFFSET = 5
+
+-- UI colors/transparency (you can change)
+local PANEL_TRANSPARENCY = 0.55
+local BUTTON_TRANSPARENCY = 0.45
+
+-- =========================
+-- State
+-- =========================
+local autoRaceEnabled = false
+local autoWinEnabled = false
+local uiOpen = true
+
+-- =========================
+-- Helpers
+-- =========================
+local function safeGetCharacter()
+    if not player.Character or not player.Character.Parent then
+        player.CharacterAdded:Wait()
+    end
+    return player.Character
+end
+
+local function teleportToPosition(pos)
+    local char = safeGetCharacter()
+    local hrp_local = char:FindFirstChild("HumanoidRootPart")
+    if hrp_local then
+        hrp_local.CFrame = CFrame.new(pos + Vector3.new(0, TELEPORT_Y_OFFSET, 0))
+    end
+end
+
+local function findPartByNameOrTag(name)
+    -- tries workspace first, then descendants
+    local found = workspace:FindFirstChild(name)
+    if found then return found end
+    -- fallback: search descendants (costly but okay for templates)
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v.Name == name then return v end
+    end
+    return nil
+end
+
+-- Smooth UI tween helper
+local function tweenObject(obj, props, time, style, dir)
+    TweenService:Create(obj, TweenInfo.new(time or 0.25, Enum.EasingStyle[style or "Quad"], Enum.EasingDirection[dir or "Out"]), props):Play()
+end
+
+-- =========================
+-- Create UI
+-- =========================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MiwaXHX_Panel"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "Main"
+mainFrame.AnchorPoint = Vector2.new(0,0)
+mainFrame.Position = UDim2.new(0.03, 0, 0.12, 0)
+mainFrame.Size = UDim2.new(0, 340, 0, 370)
+mainFrame.BackgroundTransparency = 1
+mainFrame.Parent = screenGui
+
+-- blurred/backdrop
+local bg = Instance.new("Frame", mainFrame)
+bg.Name = "Bg"
+bg.Size = UDim2.new(1,0,1,0)
+bg.Position = UDim2.new(0,0,0,0)
+bg.BackgroundColor3 = Color3.fromRGB(25,25,30)
+bg.BackgroundTransparency = PANEL_TRANSPARENCY
+bg.BorderSizePixel = 0
+bg.AnchorPoint = Vector2.new(0,0)
+bg.ClipsDescendants = true
+bg.Visible = true
+
+-- Title bar
+local titleBar = Instance.new("Frame", bg)
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1,0,0,36)
+titleBar.Position = UDim2.new(0,0,0,0)
+titleBar.BackgroundTransparency = 1
+
+local titleLabel = Instance.new("TextLabel", titleBar)
+titleLabel.Size = UDim2.new(0.7, -8, 1, 0)
+titleLabel.Position = UDim2.new(0,8,0,0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "MiwaXHX • Speed Tools"
+titleLabel.Font = Enum.Font.GothamBlack
+titleLabel.TextSize = 14
+titleLabel.TextColor3 = Color3.fromRGB(235,235,240)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local minimizeBtn = Instance.new("TextButton", titleBar)
+minimizeBtn.Name = "Minimize"
+minimizeBtn.Size = UDim2.new(0,72,0,24)
+minimizeBtn.Position = UDim2.new(1, -80, 0.5, -12)
+minimizeBtn.BackgroundTransparency = BUTTON_TRANSPARENCY
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(40,40,45)
+minimizeBtn.BorderSizePixel = 0
+minimizeBtn.Text = "Minimize"
+minimizeBtn.Font = Enum.Font.Gotham
+minimizeBtn.TextSize = 12
+minimizeBtn.TextColor3 = Color3.fromRGB(220,220,225)
+
+-- Content area (scrollable)
+local content = Instance.new("ScrollingFrame", bg)
+content.Name = "Content"
+content.Size = UDim2.new(1, -12, 1, -52)
+content.Position = UDim2.new(0,6,0,42)
+content.CanvasSize = UDim2.new(0,0,0,0)
+content.ScrollBarThickness = 6
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local uiList = Instance.new("UIListLayout", content)
+uiList.SortOrder = Enum.SortOrder.LayoutOrder
+uiList.Padding = UDim.new(0,8)
+
+-- Small helper function to make labeled buttons and toggles
+local function createToggleRow(parent, labelText, initialState, onToggle)
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1,0,0,44)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.6,0,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 14
+    lbl.TextColor3 = Color3.fromRGB(240,240,245)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0,100,0,28)
+    btn.Position = UDim2.new(1, -110, 0.5, -14)
+    btn.BackgroundColor3 = Color3.fromRGB(45,45,50)
+    btn.BackgroundTransparency = 0
+    btn.BorderSizePixel = 0
+    btn.Text = initialState and "ON" or "OFF"
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 13
+    btn.TextColor3 = Color3.fromRGB(230,230,235)
+    btn.AutoButtonColor = true
+
+    btn.MouseButton1Click:Connect(function()
+        initialState = not initialState
+        btn.Text = initialState and "ON" or "OFF"
+        if onToggle then
+            onToggle(initialState)
+        end
+    end)
+    return row, btn
+end
+
+-- Create toggles
+local autoRaceRow = createToggleRow(content, "Auto Race", false, function(state) 
+    autoRaceEnabled = state
+end)
+local autoWinRow  = createToggleRow(content, "Auto Win", false, function(state)
+    autoWinEnabled = state
+end)
+
+-- Teleports label
+local tLabel = Instance.new("TextLabel", content)
+tLabel.Size = UDim2.new(1,0,0,20)
+tLabel.BackgroundTransparency = 1
+tLabel.Text = "Teleports"
+tLabel.Font = Enum.Font.GothamBold
+tLabel.TextSize = 12
+tLabel.TextColor3 = Color3.fromRGB(210,210,215)
+tLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Teleport buttons container
+local tpContainer = Instance.new("Frame", content)
+tpContainer.Size = UDim2.new(1,0,0, ( #ISLANDS * 34) )
+tpContainer.BackgroundTransparency = 1
+
+local tpLayout = Instance.new("UIListLayout", tpContainer)
+tpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tpLayout.Padding = UDim.new(0,6)
+
+for i, isl in ipairs(ISLANDS) do
+    local b = Instance.new("TextButton", tpContainer)
+    b.Size = UDim2.new(1,0,0,30)
+    b.BackgroundColor3 = Color3.fromRGB(50,50,56)
+    b.BorderSizePixel = 0
+    b.Text = "Teleport → " .. isl.name
+    b.Font = Enum.Font.GothamSemibold
+    b.TextSize = 13
+    b.TextColor3 = Color3.fromRGB(240,240,245)
+    b.AutoButtonColor = true
+
+    b.MouseButton1Click:Connect(function()
+        teleportToPosition(isl.pos)
+    end)
+end
+
+-- Footer / credits
+local footer = Instance.new("TextLabel", content)
+footer.Size = UDim2.new(1,0,0,26)
+footer.BackgroundTransparency = 1
+footer.Text = "Made for your own game • Edit positions & race parts"
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 11
+footer.TextColor3 = Color3.fromRGB(180,180,190)
+footer.TextXAlignment = Enum.TextXAlignment.Left
+
+-- =========================
+-- Minimize behavior
+-- =========================
+local minimizedFrame = nil
+minimizeBtn.MouseButton1Click:Connect(function()
+    uiOpen = not uiOpen
+    if uiOpen then
+        minimizeBtn.Text = "Minimize"
+        tweenObject(bg, {Size = UDim2.new(1,0,1,0)}, 0.25, "Quad", "Out")
+        content.Visible = true
+    else
+        minimizeBtn.Text = "Open"
+        -- shrink content
+        tweenObject(bg, {Size = UDim2.new(1,0,0,36)}, 0.25, "Quad", "Out")
+        content.Visible = false
+    end
+end)
+
+-- =========================
+-- Auto Race coroutine
+-- =========================
+spawn(function()
+    while RunService.Heartbeat:Wait() do
+        if autoRaceEnabled then
+            -- find start and finish parts in workspace
+            local startPart = findPartByNameOrTag(RACE_START_TAG)
+            local finishPart = findPartByNameOrTag(RACE_FINISH_TAG)
+
+            if startPart and finishPart then
+                -- teleport to start quickly (optional)
+                pcall(function()
+                    teleportToPosition(startPart.Position)
+                end)
+                wait(0.2)
+
+                -- attempt to move to finish using Humanoid:MoveTo
+                local char = safeGetCharacter()
+                local h = char:FindFirstChildOfClass("Humanoid")
+                local hrp_local = char:FindFirstChild("HumanoidRootPart")
+                if h and hrp_local then
+                    local moved = false
+                    local success, err = pcall(function()
+                        h:MoveTo(finishPart.Position + Vector3.new(0,1,0))
+                        local t0 = tick()
+                        while tick() - t0 < AUTO_RACE_MOVE_TO_TIMEOUT do
+                            if (hrp_local.Position - finishPart.Position).Magnitude < 6 then
+                                moved = true
+                                break
+                            end
+                            if not autoRaceEnabled then break end
+                            RunService.Heartbeat:Wait()
+                        end
+                    end)
+                    -- if we reached finish or MoveTo timed out, wait a bit and loop
+                    wait(AUTO_RACE_WAIT_AFTER_FINISH)
+                else
+                    -- No humanoid found; wait and retry
+                    wait(1)
+                end
+            else
+                -- cannot find race parts; wait and retry
+                wait(1.5)
+            end
+        else
+            wait(0.35)
+        end
+    end
+end)
+
+-- =========================
+-- Auto Win coroutine (teleport to finish instantly)
+-- =========================
+spawn(function()
+    while RunService.Heartbeat:Wait() do
+        if autoWinEnabled then
+            local finishPart = findPartByNameOrTag(RACE_FINISH_TAG)
+            if finishPart then
+                -- Teleport player directly to finish
+                teleportToPosition(finishPart.Position + Vector3.new(0, 4, 0))
+                -- small wait so server and client have time to register
+                wait(0.7)
+            else
+                wait(1)
+            end
+        else
+            wait(0.35)
+        end
+    end
+end)
+
+-- =========================
+-- Auto-update character refs if respawn
+-- =========================
+player.CharacterAdded:Connect(function(char)
+    character = char
+    hrp = character:WaitForChild("HumanoidRootPart")
+    humanoid = character:WaitForChild("Humanoid")
+end)
+
+-- =========================
+-- Final polish: animate open
+-- =========================
+bg.Size = UDim2.new(0,340,0,0)
+tweenObject(bg, {Size = UDim2.new(1,0,1,0)}, 0.35, "Elastic", "Out")
