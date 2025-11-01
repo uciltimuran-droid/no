@@ -1,0 +1,254 @@
+-- UI Panel Script for Legends Of Speed with Enhanced Features and Auto Rebirth
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local screenGui = Instance.new("ScreenGui", playerGui)
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 200, 0, 300)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BorderSizePixel = 1
+frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+
+local titleBar = Instance.new("Frame", frame)
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+titleBar.BorderSizePixel = 0
+
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, 0, 1, 0)
+titleText.Text = "Miwa-So Panel"
+titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleText.BackgroundTransparency = 1
+titleText.Font = Enum.Font.SourceSansBold
+titleText.TextSize = 20
+titleText.TextXAlignment = Enum.TextXAlignment.Center
+titleText.TextYAlignment = Enum.TextYAlignment.Center
+
+local minimizeButton = Instance.new("TextButton", titleBar)
+minimizeButton.Size = UDim2.new(0, 30, 1, 0)
+minimizeButton.Position = UDim2.new(1, -30, 0, 0)
+minimizeButton.Text = "-"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Font = Enum.Font.SourceSansBold
+minimizeButton.TextSize = 20
+
+local contentFrame = Instance.new("Frame", frame)
+contentFrame.Size = UDim2.new(1, 0, 1, -30)
+contentFrame.Position = UDim2.new(0, 0, 0, 30)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+
+local function createToggleButton(parent, text, callback)
+    local button = Instance.new("TextButton", parent)
+    button.Size = UDim2.new(1, 0, 0, 30)
+    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.BorderSizePixel = 1
+    button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 18
+    button.TextXAlignment = Enum.TextXAlignment.Center
+    button.TextYAlignment = Enum.TextYAlignment.Center
+
+    button.MouseButton1Click:Connect(callback)
+    return button
+end
+
+local function createSlider(parent, text, min, max, default, callback)
+    local frame = Instance.new("Frame", parent)
+    frame.Size = UDim2.new(1, 0, 0, 50)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+
+    local label = Instance.new("TextLabel", frame)
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 18
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+
+    local slider = Instance.new("TextButton", frame)
+    slider.Size = UDim2.new(1, 0, 0, 30)
+    slider.Position = UDim2.new(0, 0, 0, 20)
+    slider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    slider.BorderSizePixel = 1
+    slider.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    slider.Text = ""
+    slider.MouseButton1Down:Connect(function()
+        local startPos = slider.AbsolutePosition
+        local startSize = slider.Size
+        local dragging = true
+        local function updateSlider(input)
+            if dragging then
+                local newPos = UDim2.new(startPos.X.Scale, math.clamp(input.Position.X - startPos.X.Offset, 0, frame.AbsoluteSize.X - startSize.X.Offset), startPos.Y.Scale, startPos.Y.Offset)
+                slider.Size = newPos
+                local value = math.floor((newPos.X.Offset / frame.AbsoluteSize.X) * (max - min) + min)
+                callback(value)
+            end
+        end
+        game:GetService("UserInputService").InputChanged:Connect(updateSlider)
+        game:GetService("UserInputService").InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+                game:GetService("UserInputService").InputChanged:Disconnect(updateSlider)
+            end
+        end)
+    end)
+
+    callback(default)
+    return slider
+end
+
+local autoGemsButton = createToggleButton(contentFrame, "Auto Gems", function()
+    local function autoGems()
+        while true do
+            for _, gem in ipairs(workspace.Gems:GetChildren()) do
+                if gem:IsA("Part") then
+                    player.Character.HumanoidRootPart.CFrame = gem.CFrame
+                    wait(0.1)
+                end
+            end
+            wait(1)
+        end
+    end
+    autoGemsButton.Text = "Auto Gems: On"
+    autoGems()
+end)
+
+local autoHoopsButton = createToggleButton(contentFrame, "Auto Hoops", function()
+    local function autoHoops()
+        while true do
+            for _, hoop in ipairs(workspace.Hoops:GetChildren()) do
+                if hoop:IsA("Part") then
+                    player.Character.HumanoidRootPart.CFrame = hoop.CFrame
+                    wait(0.1)
+                end
+            end
+            wait(1)
+        end
+    end
+    autoHoopsButton.Text = "Auto Hoops: On"
+    autoHoops()
+end)
+
+local autoCollectOrbsButton = createToggleButton(contentFrame, "Auto Collect Orbs", function()
+    local function autoCollectOrbs()
+        while true do
+            for _, orb in ipairs(workspace.Orbs:GetChildren()) do
+                if orb:IsA("Part") then
+                    player.Character.HumanoidRootPart.CFrame = orb.CFrame
+                    wait(0.1)
+                end
+            end
+            wait(1)
+        end
+    end
+    autoCollectOrbsButton.Text = "Auto Collect Orbs: On"
+    autoCollectOrbs()
+end)
+
+local autoJoinRaceButton = createToggleButton(contentFrame, "Auto Join Race", function()
+    local function autoJoinRace()
+        while true do
+            if workspace.RaceStart:IsA("Part") then
+                player.Character.HumanoidRootPart.CFrame = workspace.RaceStart.CFrame
+                wait(0.1)
+            end
+            wait(1)
+        end
+    end
+    autoJoinRaceButton.Text = "Auto Join Race: On"
+    autoJoinRace()
+end)
+
+local autoWinRaceButton = createToggleButton(contentFrame, "Auto Win Race", function()
+    local function autoWinRace()
+        while true do
+            if workspace.FinishLine:IsA("Part") then
+                player.Character.HumanoidRootPart.CFrame = workspace.FinishLine.CFrame
+                wait(0.1)
+            end
+            wait(1)
+        end
+    end
+    autoWinRaceButton.Text = "Auto Win Race: On"
+    autoWinRace()
+end)
+
+local teleportButton = createToggleButton(contentFrame, "Teleport", function()
+    local function teleport()
+        local teleportPart = Instance.new("Part", workspace)
+        teleportPart.Size = Vector3.new(4, 1, 4)
+        teleportPart.Anchored = true
+        teleportPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
+        player.Character.HumanoidRootPart.CFrame = teleportPart.CFrame
+        wait(0.1)
+        teleportPart:Destroy()
+    end
+    teleportButton.Text = "Teleport: On"
+    teleport()
+end)
+
+local autoRespawnButton = createToggleButton(contentFrame, "Auto Respawn", function()
+    local function autoRespawn()
+        while true do
+            if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health <= 0 then
+                player:LoadCharacter()
+            end
+            wait(1)
+        end
+    end
+    autoRespawnButton.Text = "Auto Respawn: On"
+    autoRespawn()
+end)
+
+local autoEquipBestGearButton = createToggleButton(contentFrame, "Auto Equip Best Gear", function()
+    local function autoEquipBestGear()
+        while true do
+            for _, tool in ipairs(player.Backpack:GetChildren()) do
+                if tool:IsA("Tool") then
+                    player.Character.Humanoid:EquipTool(tool)
+                end
+            end
+            wait(1)
+        end
+    end
+    autoEquipBestGearButton.Text = "Auto Equip Best Gear: On"
+    autoEquipBestGear()
+end)
+
+local autoRebirthButton = createToggleButton(contentFrame, "Auto Rebirth", function()
+    local function autoRebirth()
+        while true do
+            -- Assuming there is a rebirth system in the game with a specific part or function to trigger rebirth
+            if workspace.RebirthPoint:IsA("Part") then
+                player.Character.HumanoidRootPart.CFrame = workspace.RebirthPoint.CFrame
+                wait(0.1)
+            end
+            wait(1)
+        end
+    end
+    autoRebirthButton.Text = "Auto Rebirth: On"
+    autoRebirth()
+end)
+
+local orbOptionsSlider = createSlider(contentFrame, "Orb Options", 1, 5, 3, function(value)
+    -- Implement orb options logic here
+    print("Orb Options set to:", value)
+end)
+
+minimizeButton.MouseButton1Click:Connect(function()
+    if frame.Size.Y.Offset == 300 then
+        frame.Size = UDim2.new(0, 200, 0, 30)
+    else
+        frame.Size = UDim2.new(0, 200, 0, 300)
+    end
+end)
