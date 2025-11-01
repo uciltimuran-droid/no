@@ -1,0 +1,361 @@
+--// M-W FPS Pro Edition - FIXED (by Miwa)
+--// All ESP features fixed: Player, Box, Health, TeamColor, Distance + working minimize
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.LocalPlayer
+
+-- Create GUI
+local MWGui = Instance.new("ScreenGui")
+MWGui.Name = "M-W_FPS_Pro_Fixed"
+MWGui.ResetOnSpawn = false
+MWGui.Parent = game.CoreGui -- keep same as prior; if errors in some env, change to PlayerGui
+
+-- Main Frame
+local Frame = Instance.new("Frame")
+Frame.Name = "MainFrame"
+Frame.Size = UDim2.new(0, 280, 0, 260)
+Frame.Position = UDim2.new(0.05, 0, 0.22, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(15,15,15)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.Parent = MWGui
+
+local Corner = Instance.new("UICorner", Frame)
+Corner.CornerRadius = UDim.new(0,10)
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Name = "Title"
+Title.Size = UDim2.new(1,0,0,36)
+Title.Position = UDim2.new(0,0,0,0)
+Title.BackgroundTransparency = 1
+Title.Text = "M-W FPS Panel"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextColor3 = Color3.fromRGB(0,200,255)
+
+-- Minimize Button (top-right)
+local Minimize = Instance.new("TextButton", Frame)
+Minimize.Name = "Minimize"
+Minimize.Size = UDim2.new(0,34,0,30)
+Minimize.Position = UDim2.new(1, -40, 0, 3)
+Minimize.Text = "-"
+Minimize.Font = Enum.Font.GothamBold
+Minimize.TextSize = 18
+Minimize.TextColor3 = Color3.fromRGB(255,255,255)
+Minimize.BackgroundColor3 = Color3.fromRGB(30,30,30)
+local MinCorner = Instance.new("UICorner", Minimize)
+MinCorner.CornerRadius = UDim.new(0,6)
+
+-- Content Frame (buttons) -> this is the part we hide on minimize
+local Content = Instance.new("Frame", Frame)
+Content.Name = "Content"
+Content.Size = UDim2.new(1,-12,1,-46)
+Content.Position = UDim2.new(0,6,0,40)
+Content.BackgroundTransparency = 1
+
+-- helper to create buttons inside content
+local function makeButton(text, y)
+	local btn = Instance.new("TextButton", Content)
+	btn.Size = UDim2.new(1,0,0,36)
+	btn.Position = UDim2.new(0,0,0,(y-1)*40)
+	btn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 14
+	btn.TextColor3 = Color3.fromRGB(255,255,255)
+	btn.Text = text
+	local c = Instance.new("UICorner", btn)
+	c.CornerRadius = UDim.new(0,8)
+	return btn
+end
+
+local ESPButton = makeButton("ESP Player : OFF", 1)
+local BoxButton = makeButton("ESP Box : OFF", 2)
+local HealthButton = makeButton("ESP Health : OFF", 3)
+local TeamButton = makeButton("Team Color : OFF", 4)
+local DistanceButton = makeButton("ESP Distance : OFF", 5)
+
+-- States
+local state = {
+	esp = false,
+	box = false,
+	health = false,
+	team = false,
+	distance = false,
+}
+
+-- Storage for ESP GUIs
+local espTable = {} -- espTable[player] = {gui = BillboardGui, nameLabel, boxFrame, healthFrame, distLabel, humanoidRef}
+
+-- Create BillboardGui for a player
+local function createESPForPlayer(player)
+	-- don't create for local player
+	if player == localPlayer then return end
+	-- if exists, ignore
+	if espTable[player] then return end
+	-- ensure character & head exist
+	local char = player.Character
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not head then return end
+
+	-- BillboardGui
+	local bill = Instance.new("BillboardGui")
+	bill.Name = player.Name .. "_MW_ESP"
+	bill.Adornee = head
+	bill.Size = UDim2.new(0,200,0,80)
+	bill.AlwaysOnTop = true
+	bill.ExtentsOffset = Vector3.new(0, 1.2, 0)
+	bill.Parent = MWGui -- put in CoreGui to avoid workspace clutter (BillboardGui can be parented to CoreGui)
+
+	-- Name label
+	local nameLabel = Instance.new("TextLabel", bill)
+	nameLabel.Name = "NameLabel"
+	nameLabel.Size = UDim2.new(1,0,0,20)
+	nameLabel.Position = UDim2.new(0,0,0,0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 14
+	nameLabel.TextColor3 = Color3.fromRGB(0,255,255)
+	nameLabel.Text = player.Name
+
+	-- Distance label
+	local distLabel = Instance.new("TextLabel", bill)
+	distLabel.Name = "DistLabel"
+	distLabel.Size = UDim2.new(1,0,0,16)
+	distLabel.Position = UDim2.new(0,0,1,-16)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Font = Enum.Font.Gotham
+	distLabel.TextSize = 12
+	distLabel.TextColor3 = Color3.fromRGB(255,255,255)
+	distLabel.Text = ""
+
+	-- Box frame (visualized with Frame + Border)
+	local boxFrame = Instance.new("Frame", bill)
+	boxFrame.Name = "BoxFrame"
+	boxFrame.Size = UDim2.new(1,0,0.6,0)
+	boxFrame.Position = UDim2.new(0,0,0.18,0)
+	boxFrame.BackgroundTransparency = 1
+	boxFrame.BorderSizePixel = 2
+	boxFrame.BorderColor3 = Color3.fromRGB(0,255,255)
+	boxFrame.Visible = state.box
+
+	-- Health bar (simple vertical bar)
+	local healthBg = Instance.new("Frame", bill)
+	healthBg.Name = "HealthBg"
+	healthBg.Size = UDim2.new(0.04,0,0.6,0)
+	healthBg.Position = UDim2.new(-0.06,0,0.18,0)
+	healthBg.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	healthBg.BorderSizePixel = 0
+	healthBg.Visible = state.health
+
+	local healthBar = Instance.new("Frame", healthBg)
+	healthBar.Name = "HealthBar"
+	healthBar.Size = UDim2.new(1,0,1,0)
+	healthBar.Position = UDim2.new(0,0,0,0)
+	healthBar.BackgroundColor3 = Color3.fromRGB(0,255,0)
+	healthBar.BorderSizePixel = 0
+
+	-- store references
+	espTable[player] = {
+		gui = bill,
+		nameLabel = nameLabel,
+		boxFrame = boxFrame,
+		healthBg = healthBg,
+		healthBar = healthBar,
+		distLabel = distLabel,
+		humanoidRef = humanoid
+	}
+end
+
+local function destroyESPForPlayer(player)
+	local data = espTable[player]
+	if data then
+		if data.gui and data.gui.Parent then
+			data.gui:Destroy()
+		end
+		espTable[player] = nil
+	end
+end
+
+-- Update loop: single RenderStepped to update all ESPs
+RunService.RenderStepped:Connect(function()
+	-- update only when esp state is enabled
+	if not state.esp then return end
+	-- ensure local player's root exists for distance calc
+	local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+	for player, data in pairs(espTable) do
+		-- validate character/head/humanoid
+		local char = player.Character
+		if not char or not char.Parent then
+			destroyESPForPlayer(player)
+		else
+			local head = char:FindFirstChild("Head")
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if not head then
+				destroyESPForPlayer(player)
+			else
+				-- Update name (in case you want to show health or other tags)
+				data.nameLabel.Text = player.Name
+
+				-- Team coloring logic
+				if state.team and player.Team and localPlayer.Team then
+					if player.Team == localPlayer.Team then
+						data.nameLabel.TextColor3 = Color3.fromRGB(0,255,0)
+						data.boxFrame.BorderColor3 = Color3.fromRGB(0,255,0)
+					else
+						data.nameLabel.TextColor3 = Color3.fromRGB(255,0,0)
+						data.boxFrame.BorderColor3 = Color3.fromRGB(255,0,0)
+					end
+				else
+					data.nameLabel.TextColor3 = Color3.fromRGB(0,255,255)
+					data.boxFrame.BorderColor3 = Color3.fromRGB(0,255,255)
+				end
+
+				-- Box visibility
+				data.boxFrame.Visible = state.box
+
+				-- Health update
+				if humanoid and state.health then
+					local ratio = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+					-- Health bar visual (scale vertically)
+					data.healthBg.Visible = true
+					data.healthBar.Size = UDim2.new(1,0,ratio,0)
+					data.healthBar.Position = UDim2.new(0,0,1-ratio,0)
+					data.healthBar.BackgroundColor3 = Color3.fromRGB(255 * (1 - ratio), 255 * ratio, 0)
+				else
+					data.healthBg.Visible = state.health -- either true/false
+				end
+
+				-- Distance update
+				if state.distance and localRoot then
+					local headPos = head.Position
+					local dist = (localRoot.Position - headPos).Magnitude
+					data.distLabel.Text = string.format("[%.0f m]", dist)
+					data.distLabel.Visible = true
+				else
+					data.distLabel.Visible = false
+				end
+			end
+		end
+	end
+end)
+
+-- Toggle functions
+ESPButton.MouseButton1Click:Connect(function()
+	state.esp = not state.esp
+	ESPButton.Text = state.esp and "ESP Player : ON" or "ESP Player : OFF"
+	if state.esp then
+		-- create esp for existing players
+		for _, p in pairs(Players:GetPlayers()) do
+			-- create only if they have character
+			if p ~= localPlayer and p.Character and p.Character:FindFirstChild("Head") then
+				createESPForPlayer(p)
+			end
+		end
+	else
+		-- destroy all
+		for p,_ in pairs(espTable) do
+			destroyESPForPlayer(p)
+		end
+	end
+end)
+
+BoxButton.MouseButton1Click:Connect(function()
+	state.box = not state.box
+	BoxButton.Text = state.box and "ESP Box : ON" or "ESP Box : OFF"
+	-- update immediate visibility
+	for _, d in pairs(espTable) do
+		if d.boxFrame then d.boxFrame.Visible = state.box end
+	end
+end)
+
+HealthButton.MouseButton1Click:Connect(function()
+	state.health = not state.health
+	HealthButton.Text = state.health and "ESP Health : ON" or "ESP Health : OFF"
+	for _, d in pairs(espTable) do
+		if d.healthBg then d.healthBg.Visible = state.health end
+	end
+end)
+
+TeamButton.MouseButton1Click:Connect(function()
+	state.team = not state.team
+	TeamButton.Text = state.team and "Team Color : ON" or "Team Color : OFF"
+end)
+
+DistanceButton.MouseButton1Click:Connect(function()
+	state.distance = not state.distance
+	DistanceButton.Text = state.distance and "ESP Distance : ON" or "ESP Distance : OFF"
+	for _, d in pairs(espTable) do
+		if d.distLabel then d.distLabel.Visible = state.distance end
+	end
+end)
+
+-- Player & Character events
+Players.PlayerAdded:Connect(function(player)
+	-- create esp later if enabled and character exists
+	player.CharacterAdded:Connect(function(char)
+		-- small wait until head/humanoid exist
+		char:WaitForChild("Head", 2)
+		char:WaitForChild("Humanoid", 2)
+		if state.esp then
+			createESPForPlayer(player)
+		end
+	end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	destroyESPForPlayer(player)
+end)
+
+-- Also handle players already present (for LocalPlayer join scenario)
+for _, p in pairs(Players:GetPlayers()) do
+	if p ~= localPlayer then
+		-- bind CharacterAdded for existing players
+		p.CharacterAdded:Connect(function(char)
+			char:WaitForChild("Head", 2)
+			char:WaitForChild("Humanoid", 2)
+			if state.esp then
+				createESPForPlayer(p)
+			end
+		end)
+		-- if they already have a character, create now if esp active
+		if state.esp and p.Character and p.Character:FindFirstChild("Head") then
+			createESPForPlayer(p)
+		end
+	end
+end
+
+-- Minimize logic (use Content visibility)
+local minimized = false
+Minimize.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	if minimized then
+		Content.Visible = false
+		Frame.Size = UDim2.new(0, 150, 0, 40)
+		Minimize.Text = "+"
+		-- keep Title visible, maybe change text smaller
+	else
+		Content.Visible = true
+		Frame.Size = UDim2.new(0, 280, 0, 260)
+		Minimize.Text = "-"
+	end
+end)
+
+-- Safety helper: clean ESP when script disabled / removed
+local function cleanup()
+	for p,_ in pairs(espTable) do
+		destroyESPForPlayer(p)
+	end
+end
+
+-- if script destroyed later, try cleanup
+if script then
+	script.Destroying:Connect(cleanup)
+end
