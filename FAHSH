@@ -1,0 +1,260 @@
+--// M-W FPS Pro Edition (by Miwa)
+--// Full ESP Suite for FPS Developers
+
+-- UI Setup
+local MWGui = Instance.new("ScreenGui", game.CoreGui)
+MWGui.Name = "M-W_FPS_Pro"
+
+local Frame = Instance.new("Frame", MWGui)
+Frame.Size = UDim2.new(0, 260, 0, 220)
+Frame.Position = UDim2.new(0.05, 0, 0.25, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+
+local corner = Instance.new("UICorner", Frame)
+corner.CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Text = "M-W FPS Panel"
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextColor3 = Color3.fromRGB(0, 200, 255)
+
+local Minimize = Instance.new("TextButton", Frame)
+Minimize.Text = "-"
+Minimize.Size = UDim2.new(0, 30, 0, 30)
+Minimize.Position = UDim2.new(1, -35, 0, 0)
+Minimize.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Minimize.TextColor3 = Color3.fromRGB(255, 255, 255)
+Minimize.Font = Enum.Font.GothamBold
+Minimize.TextSize = 18
+local corner2 = Instance.new("UICorner", Minimize)
+corner2.CornerRadius = UDim.new(0, 8)
+
+-- Buttons
+local function CreateButton(text, posY)
+	local btn = Instance.new("TextButton", Frame)
+	btn.Text = text
+	btn.Size = UDim2.new(1, -20, 0, 35)
+	btn.Position = UDim2.new(0, 10, 0, posY)
+	btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 16
+	local c = Instance.new("UICorner", btn)
+	c.CornerRadius = UDim.new(0, 8)
+	return btn
+end
+
+local ESPButton = CreateButton("ESP Player : OFF", 45)
+local BoxButton = CreateButton("ESP Box : OFF", 85)
+local HealthButton = CreateButton("ESP Health : OFF", 125)
+local TeamButton = CreateButton("Team Color : OFF", 165)
+local DistanceButton = CreateButton("ESP Distance : OFF", 205)
+
+-- Variables
+local ESPEnabled = false
+local BoxEnabled = false
+local HealthEnabled = false
+local TeamEnabled = false
+local DistanceEnabled = false
+
+local ESPFolder = Instance.new("Folder", workspace)
+ESPFolder.Name = "M_W_ESP_Folder"
+
+local localPlayer = game.Players.LocalPlayer
+local runService = game:GetService("RunService")
+
+-- Utility
+local function ClearESP()
+	for _, v in pairs(ESPFolder:GetChildren()) do
+		v:Destroy()
+	end
+end
+
+-- ESP Core
+local function CreateESP(player)
+	if not player.Character or not player.Character:FindFirstChild("Head") then return end
+	if player == localPlayer then return end
+	
+	local char = player.Character
+	local head = char:FindFirstChild("Head")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not head or not humanoid then return end
+	
+	local espBox = Instance.new("BillboardGui")
+	espBox.Name = player.Name .. "_ESP"
+	espBox.AlwaysOnTop = true
+	espBox.Size = UDim2.new(0, 200, 0, 200)
+	espBox.Adornee = head
+	espBox.Parent = ESPFolder
+	
+	-- Name Label
+	local nameLabel = Instance.new("TextLabel", espBox)
+	nameLabel.Size = UDim2.new(1, 0, 0, 20)
+	nameLabel.Position = UDim2.new(0, 0, 0, -25)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 14
+	nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+	nameLabel.Text = player.Name
+	
+	-- Distance Label
+	local distLabel = Instance.new("TextLabel", espBox)
+	distLabel.Size = UDim2.new(1, 0, 0, 20)
+	distLabel.Position = UDim2.new(0, 0, 1, -15)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Font = Enum.Font.Gotham
+	distLabel.TextSize = 12
+	distLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	distLabel.Visible = DistanceEnabled
+	
+	-- Box Frame
+	local box = Instance.new("Frame", espBox)
+	box.Size = UDim2.new(1, 0, 1, 0)
+	box.BackgroundTransparency = 1
+	box.BorderSizePixel = 2
+	box.BorderColor3 = Color3.fromRGB(0, 255, 255)
+	box.Visible = BoxEnabled
+	
+	-- Health Bar
+	local healthBar = Instance.new("Frame", espBox)
+	healthBar.Size = UDim2.new(0.03, 0, 1, 0)
+	healthBar.Position = UDim2.new(-0.05, 0, 0, 0)
+	healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+	healthBar.BorderSizePixel = 0
+	healthBar.Visible = HealthEnabled
+	
+	runService.RenderStepped:Connect(function()
+		if not player.Character or not player.Character:FindFirstChild("Head") then
+			if espBox then espBox:Destroy() end
+			return
+		end
+		
+		-- Health Update
+		if humanoid and HealthEnabled then
+			local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+			healthBar.Size = UDim2.new(0.03, 0, ratio, 0)
+			healthBar.Position = UDim2.new(-0.05, 0, 1 - ratio, 0)
+			healthBar.BackgroundColor3 = Color3.fromRGB(255 * (1 - ratio), 255 * ratio, 0)
+		end
+		
+		-- Distance
+		if DistanceEnabled and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (localPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude
+			distLabel.Text = string.format("[%.0f m]", dist)
+			distLabel.Visible = true
+		else
+			distLabel.Visible = false
+		end
+		
+		-- Team Color
+		if TeamEnabled and player.Team and localPlayer.Team then
+			if player.Team == localPlayer.Team then
+				nameLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+				box.BorderColor3 = Color3.fromRGB(0, 255, 0)
+			else
+				nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+				box.BorderColor3 = Color3.fromRGB(255, 0, 0)
+			end
+		else
+			nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+			box.BorderColor3 = Color3.fromRGB(0, 255, 255)
+		end
+	end)
+end
+
+-- Toggles
+ESPButton.MouseButton1Click:Connect(function()
+	ESPEnabled = not ESPEnabled
+	ESPButton.Text = ESPEnabled and "ESP Player : ON" or "ESP Player : OFF"
+	if ESPEnabled then
+		ClearESP()
+		for _, p in pairs(game.Players:GetPlayers()) do
+			CreateESP(p)
+		end
+	else
+		ClearESP()
+	end
+end)
+
+BoxButton.MouseButton1Click:Connect(function()
+	BoxEnabled = not BoxEnabled
+	BoxButton.Text = BoxEnabled and "ESP Box : ON" or "ESP Box : OFF"
+	for _, gui in pairs(ESPFolder:GetChildren()) do
+		local box = gui:FindFirstChildOfClass("Frame")
+		if box then box.Visible = BoxEnabled end
+	end
+end)
+
+HealthButton.MouseButton1Click:Connect(function()
+	HealthEnabled = not HealthEnabled
+	HealthButton.Text = HealthEnabled and "ESP Health : ON" or "ESP Health : OFF"
+	for _, gui in pairs(ESPFolder:GetChildren()) do
+		local hb = gui:FindFirstChildWhichIsA("Frame", true)
+		if hb then hb.Visible = HealthEnabled end
+	end
+end)
+
+TeamButton.MouseButton1Click:Connect(function()
+	TeamEnabled = not TeamEnabled
+	TeamButton.Text = TeamEnabled and "Team Color : ON" or "Team Color : OFF"
+end)
+
+DistanceButton.MouseButton1Click:Connect(function()
+	DistanceEnabled = not DistanceEnabled
+	DistanceButton.Text = DistanceEnabled and "ESP Distance : ON" or "ESP Distance : OFF"
+end)
+
+-- Auto Refresh
+task.spawn(function()
+	while true do
+		task.wait(3)
+		if ESPEnabled then
+			ClearESP()
+			for _, p in pairs(game.Players:GetPlayers()) do
+				CreateESP(p)
+			end
+		end
+	end
+end)
+
+-- Player Join/Leave
+game.Players.PlayerAdded:Connect(function(p)
+	if ESPEnabled then
+		repeat task.wait() until p.Character
+		CreateESP(p)
+	end
+end)
+
+game.Players.PlayerRemoving:Connect(function(p)
+	local esp = ESPFolder:FindFirstChild(p.Name .. "_ESP")
+	if esp then esp:Destroy() end
+end)
+
+-- Minimize
+local Minimized = false
+Minimize.MouseButton1Click:Connect(function()
+	Minimized = not Minimized
+	if Minimized then
+		for _, v in pairs(Frame:GetChildren()) do
+			if v ~= Title and v ~= Minimize then
+				v.Visible = false
+			end
+		end
+		Frame.Size = UDim2.new(0, 260, 0, 30)
+		Minimize.Text = "+"
+	else
+		for _, v in pairs(Frame:GetChildren()) do
+			if v ~= Title and v ~= Minimize then
+				v.Visible = true
+			end
+		end
+		Frame.Size = UDim2.new(0, 260, 0, 220)
+		Minimize.Text = "-"
+	end
+end)
